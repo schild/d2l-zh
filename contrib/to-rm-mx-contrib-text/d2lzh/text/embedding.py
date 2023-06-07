@@ -8,14 +8,22 @@ PRETRAINED_FILE = {
     'glove':{},
     'fasttext':{}
 }
-PRETRAINED_FILE['glove']['glove.6b.50d.txt'] = (DATA_URL + 'glove.6B.50d.zip',
-                                                '0b8703943ccdb6eb788e6f091b8946e82231bc4d')
-PRETRAINED_FILE['glove']['glove.6b.100d.txt'] = (DATA_URL + 'glove.6B.100d.zip',
-                                                 'cd43bfb07e44e6f27cbcc7bc9ae3d80284fdaf5a')
-PRETRAINED_FILE['glove']['glove.42b.300d.txt'] = (DATA_URL + 'glove.42B.300d.zip',
-                                                  'b5116e234e9eb9076672cfeabf5469f3eec904fa')
-PRETRAINED_FILE['fasttext']['wiki.en'] = (DATA_URL + 'wiki.en.zip',
-                                          'c1816da3821ae9f43899be655002f6c723e91b88')
+PRETRAINED_FILE['glove']['glove.6b.50d.txt'] = (
+    f'{DATA_URL}glove.6B.50d.zip',
+    '0b8703943ccdb6eb788e6f091b8946e82231bc4d',
+)
+PRETRAINED_FILE['glove']['glove.6b.100d.txt'] = (
+    f'{DATA_URL}glove.6B.100d.zip',
+    'cd43bfb07e44e6f27cbcc7bc9ae3d80284fdaf5a',
+)
+PRETRAINED_FILE['glove']['glove.42b.300d.txt'] = (
+    f'{DATA_URL}glove.42B.300d.zip',
+    'b5116e234e9eb9076672cfeabf5469f3eec904fa',
+)
+PRETRAINED_FILE['fasttext']['wiki.en'] = (
+    f'{DATA_URL}wiki.en.zip',
+    'c1816da3821ae9f43899be655002f6c723e91b88',
+)
 
 def mkdir_if_not_exist(path):
     if not isinstance(path, str):
@@ -31,7 +39,7 @@ def download(embedding_name, pretrained_file_name, cache_dir=os.path.join('..', 
 def download_extract(embedding_name, pretrained_file_name, folder=None):
     """Download and extract a zip/tar file."""
     fname = download(embedding_name, pretrained_file_name)
-    base_dir = os.path.dirname(fname) 
+    base_dir = os.path.dirname(fname)
     data_dir, ext = os.path.splitext(fname)
     if ext == '.zip':
         fp = zipfile.ZipFile(fname, 'r')
@@ -40,10 +48,7 @@ def download_extract(embedding_name, pretrained_file_name, folder=None):
     else:
         assert False, 'Only zip/tar files can be extracted'
     fp.extractall(base_dir)
-    if folder:
-        return os.path.join(base_dir, folder)
-    else:
-        return data_dir
+    return os.path.join(base_dir, folder) if folder else data_dir
     
 def get_pretrained_file_names(embedding_name=None):
     if embedding_name is not None:
@@ -88,8 +93,7 @@ class TokenEmbedding:
     def get_vecs_by_tokens(self, tokens):
         indices = [self.token_to_idx.get(token, self.unknown_idx)
                    for token in tokens]
-        vecs = self.idx_to_vec[nd.array(indices)]
-        return vecs
+        return self.idx_to_vec[nd.array(indices)]
 
     def __len__(self):
         return len(self.idx_to_token)
