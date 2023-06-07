@@ -40,7 +40,7 @@ def bbox_to_rect(bbox, color):
 class Benchmark():
     """Benchmark programs."""
     def __init__(self, prefix=None):
-        self.prefix = prefix + ' ' if prefix else ''
+        self.prefix = f'{prefix} ' if prefix else ''
 
     def __enter__(self):
         self.start = time.time()
@@ -86,8 +86,9 @@ def data_iter_consecutive(corpus_indices, batch_size, num_steps, ctx=None):
     corpus_indices = nd.array(corpus_indices, ctx=ctx)
     data_len = len(corpus_indices)
     batch_len = data_len // batch_size
-    indices = corpus_indices[0 : batch_size * batch_len].reshape((
-        batch_size, batch_len))
+    indices = corpus_indices[: batch_size * batch_len].reshape(
+        (batch_size, batch_len)
+    )
     epoch_size = (batch_len - 1) // num_steps
     for i in range(epoch_size):
         i = i * num_steps
@@ -246,7 +247,7 @@ def load_data_jay_lyrics():
         with zin.open('jaychou_lyrics.txt') as f:
             corpus_chars = f.read().decode('utf-8')
     corpus_chars = corpus_chars.replace('\n', ' ').replace('\r', ' ')
-    corpus_chars = corpus_chars[0:10000]
+    corpus_chars = corpus_chars[:10000]
     idx_to_char = list(set(corpus_chars))
     char_to_idx = dict([(char, i) for i, char in enumerate(idx_to_char)])
     vocab_size = len(char_to_idx)
@@ -280,7 +281,7 @@ def load_data_time_machine():
     with open('../data/timemachine.txt') as f:
         corpus_chars = f.read()
     corpus_chars = corpus_chars.replace('\n', ' ').replace('\r', ' ').lower()
-    corpus_chars = corpus_chars[0:10000]
+    corpus_chars = corpus_chars[:10000]
     idx_to_char = list(set(corpus_chars))
     char_to_idx = dict([(char, i) for i, char in enumerate(idx_to_char)])
     vocab_size = len(char_to_idx)
@@ -368,15 +369,13 @@ def read_imdb(folder='train'):
 
 def read_voc_images(root='../data/VOCdevkit/VOC2012', is_train=True):
     """Read VOC images."""
-    txt_fname = '%s/ImageSets/Segmentation/%s' % (
-        root, 'train.txt' if is_train else 'val.txt')
+    txt_fname = f"{root}/ImageSets/Segmentation/{'train.txt' if is_train else 'val.txt'}"
     with open(txt_fname, 'r') as f:
         images = f.read().split()
     features, labels = [None] * len(images), [None] * len(images)
     for i, fname in enumerate(images):
-        features[i] = image.imread('%s/JPEGImages/%s.jpg' % (root, fname))
-        labels[i] = image.imread(
-            '%s/SegmentationClass/%s.png' % (root, fname))
+        features[i] = image.imread(f'{root}/JPEGImages/{fname}.jpg')
+        labels[i] = image.imread(f'{root}/SegmentationClass/{fname}.png')
     return features, labels
 
 
@@ -538,18 +537,20 @@ def train(train_iter, test_iter, net, loss, trainer, ctx, num_epochs):
     for epoch in range(num_epochs):
         train_l_sum, train_acc_sum, n, m, start = 0.0, 0.0, 0, 0, time.time()
         for i, batch in enumerate(train_iter):
-            Xs, ys, batch_size = _get_batch(batch, ctx)   
+            Xs, ys, batch_size = _get_batch(batch, ctx)
             with autograd.record():
                 y_hats = [net(X) for X in Xs]
                 ls = [loss(y_hat, y) for y_hat, y in zip(y_hats, ys)]
             for l in ls:
                 l.backward()
             trainer.step(batch_size)
-            train_l_sum += sum([l.sum().asscalar() for l in ls])
-            n += sum([l.size for l in ls])
-            train_acc_sum += sum([(y_hat.argmax(axis=1) == y).sum().asscalar()
-                                 for y_hat, y in zip(y_hats, ys)])
-            m += sum([y.size for y in ys])
+            train_l_sum += sum(l.sum().asscalar() for l in ls)
+            n += sum(l.size for l in ls)
+            train_acc_sum += sum(
+                (y_hat.argmax(axis=1) == y).sum().asscalar()
+                for y_hat, y in zip(y_hats, ys)
+            )
+            m += sum(y.size for y in ys)
         test_acc = evaluate_accuracy(test_iter, net, ctx)
         print('epoch %d, loss %.4f, train acc %.3f, test acc %.3f, '
               'time %.1f sec'
@@ -575,10 +576,7 @@ def train_and_predict_rnn(rnn, get_params, init_rnn_state, num_hiddens,
                           lr, clipping_theta, batch_size, pred_period,
                           pred_len, prefixes):
     """Train an RNN model and predict the next item in the sequence."""
-    if is_random_iter:
-        data_iter_fn = data_iter_random
-    else:
-        data_iter_fn = data_iter_consecutive
+    data_iter_fn = data_iter_random if is_random_iter else data_iter_consecutive
     params = get_params()
     loss = gloss.SoftmaxCrossEntropyLoss()
 
@@ -817,7 +815,7 @@ class VOCSegDataset(gdata.Dataset):
         self.data = [self.normalize_image(im) for im in self.filter(data)]
         self.labels = self.filter(labels)
         self.colormap2label = colormap2label
-        print('read ' + str(len(self.data)) + ' examples')
+        print(f'read {len(self.data)} examples')
 
     def normalize_image(self, data):
         return (data.astype('float32') / 255 - self.rgb_mean) / self.rgb_std

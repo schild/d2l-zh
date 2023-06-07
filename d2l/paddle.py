@@ -360,8 +360,7 @@ def predict_ch3(net, test_iter, n=6):
     trues = d2l.get_fashion_mnist_labels(y)
     preds = d2l.get_fashion_mnist_labels(d2l.argmax(net(X), axis=1))
     titles = [true +'\n' + pred for true, pred in zip(trues, preds)]
-    d2l.show_images(
-        d2l.reshape(X[0:n], (n, 28, 28)), 1, n, titles=titles[0:n])
+    d2l.show_images(d2l.reshape(X[:n], (n, 28, 28)), 1, n, titles=titles[:n])
 
 def evaluate_loss(net, data_iter, loss):
     """评估给定数据集上模型的损失。
@@ -375,7 +374,7 @@ def evaluate_loss(net, data_iter, loss):
         metric.add(l.sum(), l.numel())
     return metric[0] / metric[1]
 
-DATA_HUB = dict()
+DATA_HUB = {}
 DATA_URL = 'http://d2l-data.s3-accelerate.amazonaws.com/'
 
 def download(name, cache_dir=os.path.join('..', 'data')):
@@ -390,10 +389,10 @@ def download(name, cache_dir=os.path.join('..', 'data')):
         sha1 = hashlib.sha1()
         with open(fname, 'rb') as f:
             while True:
-                data = f.read(1048576)
-                if not data:
+                if data := f.read(1048576):
+                    sha1.update(data)
+                else:
                     break
-                sha1.update(data)
         if sha1.hexdigest() == sha1_hash:
             return fname  # 命中缓存
     print(f'正在从{url}下载{fname}...')
@@ -468,7 +467,7 @@ def evaluate_accuracy_gpu(net, data_iter, device=None):
         net.eval()  # 设置为评估模式
         if not device:
             device = next(iter(net.parameters())).place
-    paddle.set_device("gpu:{}".format(str(device)[-2]))
+    paddle.set_device(f"gpu:{str(device)[-2]}")
     # 正确预测的数量，总预测的数量
     metric = d2l.Accumulator(2)
     with paddle.no_grad():
@@ -487,8 +486,9 @@ def train_ch6(net, train_iter, test_iter, num_epochs, lr, device):
 
     Defined in :numref:`sec_lenet`"""
     def init_weights(m):
-        if type(m) == nn.Linear or type(m) == nn.Conv2D:
+        if type(m) in [nn.Linear, nn.Conv2D]:
             nn.initializer.XavierUniform(m.weight)
+
     net.apply(init_weights)
     print('training on', device)
     net.to(device)
@@ -759,14 +759,13 @@ def train_epoch_ch8(net, train_iter, loss, updater, device, use_random_iter):
         if state is None or use_random_iter:
             # 在第一次迭代或使用随机抽样时初始化state
             state = net.begin_state(batch_size=X.shape[0])
+        elif isinstance(net, nn.Layer) and not isinstance(state, tuple):
+            # state对于nn.GRU是个张量
+            state.stop_gradient=True
         else:
-            if isinstance(net, nn.Layer) and not isinstance(state, tuple):
-                # state对于nn.GRU是个张量
-                state.stop_gradient=True
-            else:
-                # state对于nn.LSTM或对于我们从零开始实现的模型是个张量
-                for s in state:
-                    s.stop_gradient=True
+            # state对于nn.LSTM或对于我们从零开始实现的模型是个张量
+            for s in state:
+                s.stop_gradient=True
         y = paddle.reshape(Y.T,shape=[-1])
         X = paddle.to_tensor(X, place=device)
         y = paddle.to_tensor(y, place=device)
@@ -1025,8 +1024,7 @@ class MaskedSoftmaxCELoss(nn.CrossEntropyLoss):
         self.reduction='none'
         unweighted_loss = super(MaskedSoftmaxCELoss, self).forward(
             pred, label)
-        weighted_loss = (unweighted_loss * weights).mean(axis=1)
-        return weighted_loss
+        return (unweighted_loss * weights).mean(axis=1)
 
 def train_seq2seq(net, data_iter, lr, num_epochs, tgt_vocab, device):
     """训练序列到序列模型
@@ -1134,19 +1132,18 @@ def masked_softmax(X, valid_lens):
     """通过在最后一个轴上掩蔽元素来执行softmax操作
 
     Defined in :numref:`sec_attention-scoring-functions`"""
-    # X:3D张量，valid_lens:1D或2D张量
     if valid_lens is None:
         return nn.functional.softmax(X, axis=-1)
-    else:
-        shape = X.shape
-        if valid_lens.dim() == 1:
-            valid_lens = paddle.repeat_interleave(valid_lens, shape[1])
-        else:
-            valid_lens = valid_lens.reshape((-1,))
-        # 最后一轴上被掩蔽的元素使用一个非常大的负值替换，从而其softmax输出为0
-        X = d2l.sequence_mask(X.reshape((-1, shape[-1])), valid_lens,
-                              value=-1e6)
-        return nn.functional.softmax(X.reshape(shape), axis=-1)
+    shape = X.shape
+    valid_lens = (
+        paddle.repeat_interleave(valid_lens, shape[1])
+        if valid_lens.dim() == 1
+        else valid_lens.reshape((-1,))
+    )
+    # 最后一轴上被掩蔽的元素使用一个非常大的负值替换，从而其softmax输出为0
+    X = d2l.sequence_mask(X.reshape((-1, shape[-1])), valid_lens,
+                          value=-1e6)
+    return nn.functional.softmax(X.reshape(shape), axis=-1)
 
 class AdditiveAttention(nn.Layer):
     """加性注意力
@@ -1719,8 +1716,7 @@ def offset_boxes(anchors, assigned_bb, eps=1e-6):
     c_assigned_bb = d2l.box_corner_to_center(assigned_bb)
     offset_xy = 10 * (c_assigned_bb[:, :2] - c_anc[:, :2]) / c_anc[:, 2:]
     offset_wh = 5 * d2l.log(eps + c_assigned_bb[:, 2:] / c_anc[:, 2:])
-    offset = d2l.concat([offset_xy, offset_wh], axis=1)
-    return offset
+    return d2l.concat([offset_xy, offset_wh], axis=1)
 
 def multibox_target(anchors, labels):
     """使用真实边界框标记锚框
@@ -1763,8 +1759,7 @@ def offset_inverse(anchors, offset_preds):
     pred_bbox_xy = (offset_preds[:, :2] * anc[:, 2:] / 10) + anc[:, :2]
     pred_bbox_wh = d2l.exp(offset_preds[:, 2:] / 5) * anc[:, 2:]
     pred_bbox = d2l.concat((pred_bbox_xy, pred_bbox_wh), axis=1)
-    predicted_bbox = d2l.box_center_to_corner(pred_bbox)
-    return predicted_bbox
+    return d2l.box_center_to_corner(pred_bbox)
 
 def nms(boxes, scores, iou_threshold):
     """对预测边界框的置信度进行排序
@@ -1846,8 +1841,12 @@ class BananasDataset(paddle.io.Dataset):
     Defined in :numref:`sec_object-detection-dataset`"""
     def __init__(self, is_train):
         self.features, self.labels = read_data_bananas(is_train)
-        print('read ' + str(len(self.features)) + (f' training examples' if
-              is_train else f' validation examples'))
+        print(
+            (
+                f'read {len(self.features)}'
+                + (' training examples' if is_train else ' validation examples')
+            )
+        )
 
     def __getitem__(self, idx):
         return (paddle.to_tensor(self.features[idx], dtype='float32').transpose([2, 0, 1]), self.labels[idx])
@@ -1879,7 +1878,7 @@ def read_voc_images(voc_dir, is_train=True):
     with open(txt_fname, 'r') as f:
         images = f.read().split()
     features, labels = [], []
-    for i, fname in enumerate(images):
+    for fname in images:
         features.append(paddle.vision.image.image_load(os.path.join(
             voc_dir, 'JPEGImages', f'{fname}.jpg'), backend='cv2')[..., ::-1].transpose(
             [2, 0, 1]))
@@ -1943,7 +1942,7 @@ class VOCSegDataset(paddle.io.Dataset):
                          for feature in self.filter(features)]
         self.labels = self.filter(labels)
         self.colormap2label = voc_colormap2label()
-        print('read ' + str(len(self.features)) + ' examples')
+        print(f'read {len(self.features)} examples')
 
     def normalize_image(self, img):
         return self.transform(img.astype("float32") / 255)
@@ -1989,7 +1988,7 @@ def read_csv_labels(fname):
         # 跳过文件头行(列名)
         lines = f.readlines()[1:]
     tokens = [l.rstrip().split(',') for l in lines]
-    return dict(((name, label) for name, label in tokens))
+    return dict(tokens)
 
 def copyfile(filename, target_dir):
     """将文件复制到目标目录
@@ -2215,8 +2214,7 @@ class TokenEmbedding:
     def __getitem__(self, tokens):
         indices = [self.token_to_idx.get(token, self.unknown_idx)
                    for token in tokens]
-        vecs = self.idx_to_vec[d2l.tensor(indices)]
-        return vecs
+        return self.idx_to_vec[d2l.tensor(indices)]
 
     def __len__(self):
         return len(self.idx_to_token)
@@ -2283,8 +2281,7 @@ class MaskLM(nn.Layer):
         batch_idx = paddle.repeat_interleave(batch_idx, num_pred_positions)
         masked_X = X[batch_idx, pred_positions]
         masked_X = masked_X.reshape((batch_size, num_pred_positions, -1))
-        mlm_Y_hat = self.mlp(masked_X)
-        return mlm_Y_hat
+        return self.mlp(masked_X)
 
 class NextSentencePred(nn.Layer):
     """BERT的下一句预测任务
@@ -2370,7 +2367,7 @@ def _replace_mlm_tokens(tokens, candidate_pred_positions, num_mlm_preds,
                         vocab):
     """Defined in :numref:`sec_bert-dataset`"""
     # 为遮蔽语言模型的输入创建新的词元副本，其中输入可能包含替换的“<mask>”或随机词元
-    mlm_input_tokens = [token for token in tokens]
+    mlm_input_tokens = list(tokens)
     pred_positions_and_labels = []
     # 打乱后用于在遮蔽语言模型任务中获取15%的随机词元进行预测
     random.shuffle(candidate_pred_positions)
@@ -2381,13 +2378,10 @@ def _replace_mlm_tokens(tokens, candidate_pred_positions, num_mlm_preds,
         # 80%的时间：将词替换为“<mask>”词元
         if random.random() < 0.8:
             masked_token = '<mask>'
+        elif random.random() < 0.5:
+            masked_token = tokens[mlm_pred_position]
         else:
-            # 10%的时间：保持词不变
-            if random.random() < 0.5:
-                masked_token = tokens[mlm_pred_position]
-            # 10%的时间：用随机词替换该词
-            else:
-                masked_token = random.choice(vocab.idx_to_token)
+            masked_token = random.choice(vocab.idx_to_token)
         mlm_input_tokens[mlm_pred_position] = masked_token
         pred_positions_and_labels.append(
             (mlm_pred_position, tokens[mlm_pred_position]))
@@ -2395,13 +2389,9 @@ def _replace_mlm_tokens(tokens, candidate_pred_positions, num_mlm_preds,
 
 def _get_mlm_data_from_tokens(tokens, vocab):
     """Defined in :numref:`subsec_prepare_mlm_data`"""
-    candidate_pred_positions = []
-    # tokens是一个字符串列表
-    for i, token in enumerate(tokens):
-        # 在遮蔽语言模型任务中不会预测特殊词元
-        if token in ['<cls>', '<sep>']:
-            continue
-        candidate_pred_positions.append(i)
+    candidate_pred_positions = [
+        i for i, token in enumerate(tokens) if token not in ['<cls>', '<sep>']
+    ]
     # 遮蔽语言模型任务中预测15%的随机词元
     num_mlm_preds = max(1, round(len(tokens) * 0.15))
     mlm_input_tokens, pred_positions_and_labels = _replace_mlm_tokens(
@@ -2588,13 +2578,13 @@ class SNLIDataset(paddle.io.Dataset):
         all_hypothesis_tokens = d2l.tokenize(dataset[1])
         if vocab is None:
             self.vocab = d2l.Vocab(all_premise_tokens + \
-                all_hypothesis_tokens, min_freq=5, reserved_tokens=['<pad>'])
+                    all_hypothesis_tokens, min_freq=5, reserved_tokens=['<pad>'])
         else:
             self.vocab = vocab
         self.premises = self._pad(all_premise_tokens)
         self.hypotheses = self._pad(all_hypothesis_tokens)
         self.labels = paddle.to_tensor(dataset[2])
-        print('read ' + str(len(self.premises)) + ' examples')
+        print(f'read {len(self.premises)} examples')
 
     def _pad(self, lines):
         return paddle.to_tensor([d2l.truncate_pad(
